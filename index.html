@@ -7,7 +7,7 @@
 <meta name="description" content="DEEP CUT - name it, and the more niche your answer, the more points you score.">
 <title>DEEP CUT</title>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="css/style.css?v=1.0.0">
+<link rel="stylesheet" href="css/style.css?v=1.1.0">
 </head>
 <body>
 <div id="app">
@@ -28,6 +28,14 @@
         <button data-n="7"><b>7</b><span>Long</span></button>
         <button data-n="10"><b>10</b><span>Marathon</span></button>
       </div>
+      <div class="lbl">Difficulty</div>
+      <div class="diffs" id="diffs">
+        <button data-d="easy">Easy</button>
+        <button data-d="normal">Normal</button>
+        <button data-d="hard">Hard</button>
+        <button data-d="expert">Expert</button>
+      </div>
+      <div class="ddesc" id="diffDesc"></div>
       <div class="lbl">Topics</div>
       <div class="themes" id="themes">
         <button data-t="mix" class="sel">Mix</button>
@@ -56,7 +64,7 @@
     <div class="pips" id="pips"></div>
 
     <div class="card" id="card">
-      <div class="cat" id="cat">ANIMALS</div>
+      <div class="chead"><div class="cat" id="cat">ANIMALS</div><div class="dtag" id="dtag"></div><div class="strikes" id="strikes"></div></div>
       <h1 class="prompt" id="prompt">Name an animal</h1>
       <div class="timer"><div id="timebar"></div></div>
 
@@ -65,6 +73,7 @@
         <button type="submit" class="goBtn" aria-label="Submit"><svg viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
       </form>
       <div class="msg" id="msg"></div>
+      <button class="hintBtn" id="hintBtn">Hint</button>
       <button class="skip" id="skipBtn">Skip</button>
 
       <!-- reveal -->
@@ -121,6 +130,7 @@
       <p>Basic answers like <i>dog</i> barely score. The more niche your answer, the higher it climbs the ladder.</p>
       <div class="ladder static" id="howLadder"></div>
       <p>Every question hides one <b class="gold">Deep Cut</b>: the rarest answer on the board, worth 500.</p>
+      <p><b>Difficulty:</b> Easy gives you 40 seconds and a hint. Normal is 25 seconds. Hard is 15 seconds, bans basic answers and pays x1.5. Expert is 10 seconds, bans basic and solid answers, gives you 2 strikes and pays x2. Stars are graded harder on Hard and Expert.</p>
       <p>Answer fast for a speed bonus. If we don't know your answer, try another one while the clock is still running. Small typos are OK.</p>
       <p>Finish the round to get a star rating out of 5. Questions you've seen are saved, so you will almost never get the same one twice.</p>
     </div>
@@ -129,13 +139,13 @@
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="js/core.js?v=1.0.0"></script>
+<script src="js/core.js?v=1.1.0"></script>
 <script>DC.theme='nature'</script>
-<script src="js/data/a.js?v=1.0.0"></script>
+<script src="js/data/a.js?v=1.1.0"></script>
 <script>DC.theme='world'</script>
-<script src="js/data/b.js?v=1.0.0"></script>
+<script src="js/data/b.js?v=1.1.0"></script>
 <script>DC.theme='pop'</script>
-<script src="js/data/c.js?v=1.0.0"></script>
-<script src="js/game.js?v=1.0.0"></script>
+<script src="js/data/c.js?v=1.1.0"></script>
+<script src="js/game.js?v=1.1.0"></script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 // DEEP CUT game UI
 (function () {
-  const VER = '1.0.0';
+  const VER = '1.1.0';
   const $ = (id) => document.getElementById(id);
   const T = DC.TIER_INFO;
   DC.cats.forEach(DC.build);
@@ -42,9 +42,21 @@
     const id = 'sg' + i + Math.random().toString(36).slice(2, 6);
     return `<svg class="st" style="animation-delay:${0.25 + i * 0.18}s" viewBox="0 0 24 24"><defs><linearGradient id="${id}"><stop offset="${fill * 100}%" stop-color="#ffc93c"/><stop offset="${fill * 100}%" stop-color="#252c3b"/></linearGradient></defs><g fill="url(#${id})" stroke="${fill > 0 ? '#8a6400' : '#3a4356'}" stroke-width="1">${STAR}</g></svg>`;
   }
-  function ladderHTML() {
+  // ---------- difficulty ----------
+  const DIFF = {
+    easy:   { name: 'Easy',   time: 40, ban: 0, mult: 1,   k: 0.6, hint: true,  strikes: 0, desc: '40 seconds. Free hint on every question.' },
+    normal: { name: 'Normal', time: 25, ban: 0, mult: 1,   k: 1,   hint: false, strikes: 0, desc: '25 seconds. Every answer counts.' },
+    hard:   { name: 'Hard',   time: 15, ban: 1, mult: 1.5, k: 1.3, hint: false, strikes: 0, desc: '15 seconds. Basic answers are banned. Points x1.5.' },
+    expert: { name: 'Expert', time: 10, ban: 2, mult: 2,   k: 1.7, hint: false, strikes: 2, desc: '10 seconds. Basic + Solid banned. 2 strikes. Points x2.' },
+  };
+  const D = () => DIFF[(R && R.diff) || diffSel] || DIFF.normal;
+  function ladderHTML(d = DIFF.normal) {
     let h = '';
-    for (let t = 1; t <= 6; t++) h += `<div class="rung r${t}" data-t="${t}"><i></i><span>${T[t].name}</span><span class="p">${t === 6 ? '500 + BONUS' : T[t].pts}</span></div>`;
+    for (let t = 1; t <= 6; t++) {
+      const ban = t <= d.ban;
+      const pts = t === 6 ? Math.round(500 * d.mult) + ' + BONUS' : Math.round(T[t].pts * d.mult);
+      h += `<div class="rung r${t}${ban ? ' ban' : ''}" data-t="${t}"><i></i><span>${T[t].name}</span><span class="p">${ban ? 'BANNED' : pts}</span></div>`;
+    }
     return h;
   }
   $('ladder').innerHTML = ladderHTML();
@@ -53,8 +65,9 @@
   $('sndBtn').onclick = () => { S.sound = !S.sound; save(); $('sndBtn').textContent = 'Sound ' + (S.sound ? 'on' : 'off'); };
 
   // ---------- picking ----------
-  function pick(n, theme, daily) {
-    let pool = PROMPTS.filter((p) => theme === 'mix' || p.cat.theme === theme);
+  function pick(n, theme, daily, diff) {
+    // easy skips the toughest letter questions (small answer pools)
+    let pool = PROMPTS.filter((p) => (theme === 'mix' || p.cat.theme === theme) && (diff !== 'easy' || !p.letter || p.size >= 25));
     const out = [], used = new Set();
     if (daily) {
       const r = DC.rng(DC.hash('deepcut' + today()));
@@ -72,9 +85,12 @@
 
   // ---------- round ----------
   let R = null, timer = 0;
-  let lenSel = 5, themeSel = 'mix';
+  let lenSel = S.lenSel || 5, themeSel = S.themeSel || 'mix', diffSel = S.diffSel || 'normal';
   function start(n, daily) {
-    R = { n, daily, qs: pick(n, daily ? 'mix' : themeSel, daily), i: 0, score: 0, res: [] };
+    const diff = daily ? 'normal' : diffSel;
+    R = { n, daily, diff, qs: pick(n, daily ? 'mix' : themeSel, daily, diff), i: 0, score: 0, res: [] };
+    $('ladder').innerHTML = ladderHTML(DIFF[diff]);
+    $('dtag').textContent = DIFF[diff].name; $('dtag').className = 'dtag d-' + diff;
     R.n = R.qs.length;
     $('pips').innerHTML = R.qs.map(() => '<i></i>').join('');
     show('play');
@@ -82,7 +98,10 @@
   }
   function nextQ() {
     const p = R.qs[R.i];
-    R.cur = { p, t0: performance.now(), tries: 0, done: false };
+    R.cur = { p, t0: performance.now(), tries: 0, strikes: 0, done: false };
+    const d = D();
+    $('hintBtn').style.display = d.hint ? '' : 'none'; $('hintBtn').disabled = false;
+    $('strikes').innerHTML = d.strikes ? '<i></i>'.repeat(d.strikes) : '';
     $('qn').textContent = (R.daily ? 'Daily ' : 'Q ') + (R.i + 1) + ' / ' + R.n;
     $('score').textContent = R.score;
     $('cat').textContent = (p.cat.label || p.cat.noun || p.cat.id).toUpperCase();
@@ -95,10 +114,10 @@
     setTimeout(() => $('ans').focus(), 30);
     cancelAnimationFrame(timer);
     const tick = () => {
-      const left = DC.TIME - (performance.now() - R.cur.t0) / 1000;
+      const TT = D().time, left = TT - (performance.now() - R.cur.t0) / 1000;
       const bar = $('timebar');
-      bar.style.transform = `scaleX(${Math.max(0, left / DC.TIME)})`;
-      bar.classList.toggle('low', left < 6);
+      bar.style.transform = `scaleX(${Math.max(0, left / TT)})`;
+      bar.classList.toggle('low', left < Math.min(6, TT * 0.35));
       if (left <= 0) return finish(null, 'time');
       timer = requestAnimationFrame(tick);
     };
@@ -111,23 +130,35 @@
     if (!val) return;
     const p = R.cur.p, m = DC.check(p, val);
     const card = $('card'), msg = $('msg');
-    const bad = (t) => { msg.textContent = t; msg.className = 'msg'; card.classList.remove('shake'); void card.offsetWidth; card.classList.add('shake'); SFX.miss(); $('ans').select(); };
+    const d = D();
+    const bad = (t) => {
+      msg.textContent = t; msg.className = 'msg'; card.classList.remove('shake'); void card.offsetWidth; card.classList.add('shake'); SFX.miss(); $('ans').select();
+      if (d.strikes) {
+        R.cur.strikes++;
+        [...$('strikes').children].forEach((x, k) => x.classList.toggle('on', k < R.cur.strikes));
+        if (R.cur.strikes >= d.strikes) setTimeout(() => finish(null, 'strikes'), 450);
+        else msg.textContent = t + ' Strike ' + R.cur.strikes + '.';
+      }
+    };
     R.cur.tries++;
-    if (!m) return bad('Not on our board. Try another one.');
+    if (!m) return bad('Not on our board.' + (d.strikes ? '' : ' Try another one.'));
     if (m.bad === 'letter') return bad('It has to start with “' + p.letter.toUpperCase() + '”.');
+    const tier = DC.tierOf(m.a, p);
+    if (tier <= d.ban) return bad('“' + nice(DC.dname(m.a, p)) + '” is ' + T[tier].name.toLowerCase() + '. Banned on ' + d.name + '. Go deeper.');
     finish(m.a, null, val);
   }
   function finish(a, why, typed) {
     const c = R.cur; if (c.done) return; c.done = true;
     cancelAnimationFrame(timer);
     $('ans').blur();
-    const left = Math.max(0, DC.TIME - (performance.now() - c.t0) / 1000);
+    const d = D();
+    const left = Math.max(0, d.time - (performance.now() - c.t0) / 1000);
     const p = c.p;
     const tier = a ? DC.tierOf(a, p) : 0;
-    const sc = a ? DC.score(tier, left) : { base: 0, speed: 0, total: 0 };
+    const sc = a ? DC.score(tier, left, d.time, d.mult) : { base: 0, speed: 0, total: 0 };
     R.score += sc.total;
     const an = a ? DC.dname(a, p) : null;
-    R.res.push({ q: p.q, ans: an, tier, base: sc.base, total: sc.total, why, legend: p.legend && DC.dname(p.legend, p) });
+    R.res.push({ q: p.q, ans: an, tier, raw: a ? T[tier].pts : 0, base: sc.base, total: sc.total, why, legend: p.legend && DC.dname(p.legend, p) });
     S.seen[p.id] = S.rounds; S.recentCats.push(p.cat.id); if (S.recentCats.length > 40) S.recentCats = S.recentCats.slice(-40);
     S.answered++; S.tiers[tier]++;
     if (tier === 6 && !S.cuts.some((x) => x.name === an && x.q === p.q)) S.cuts.unshift({ name: an, q: p.q, d: today() });
@@ -136,11 +167,11 @@
     // reveal
     const card = $('card');
     card.classList.add('done');
-    $('yours').textContent = a ? an : why === 'time' ? 'Time’s up' : 'Skipped';
+    $('yours').textContent = a ? an : why === 'time' ? 'Time’s up' : why === 'strikes' ? 'Struck out' : 'Skipped';
     $('yours').className = 'yours' + (a ? '' : ' none');
     const b = $('badge');
     b.textContent = a ? T[tier].name : 'NO SCORE'; b.className = 'badge ' + (a ? T[tier].cls : 'tb0');
-    $('pts').innerHTML = a ? `+${sc.base}${sc.speed ? `<small>+${sc.speed} speed</small>` : ''}` : '+0';
+    $('pts').innerHTML = a ? `+${sc.base}${d.mult !== 1 ? `<small>x${d.mult}</small>` : ''}${sc.speed ? `<small>+${sc.speed} speed</small>` : ''}` : '+0';
     $('note').textContent = a ? T[tier].note : '';
     const pool = p.pool ? [...p.pool] : p.cat.answers;
     const notMine = (x) => x !== a && x !== p.legend;
@@ -167,20 +198,20 @@
   const GRADES = ['Ice cold', 'Basic', 'Getting there', 'Solid round', 'Deep thinker', 'Certified Deep Cut'];
   function results() {
     S.rounds++;
-    const st = DC.stars(R.res);
+    const st = DC.stars(R.res, DIFF[R.diff].k);
     S.starSum = (S.starSum || 0) + st;
     let rec = '';
     if (R.daily) {
       if (!S.daily[today()]) { S.daily[today()] = { score: R.score, stars: st }; rec = 'Daily 5 locked in'; }
       else rec = 'Practice run (first try today: ' + S.daily[today()].score + ')';
     } else {
-      const k = String(R.n) + (themeSel === 'mix' ? '' : ':' + themeSel);
+      const k = String(R.n) + (themeSel === 'mix' ? '' : ':' + themeSel) + (R.diff === 'normal' ? '' : '@' + R.diff);
       if (!S.best[k] || R.score > S.best[k]) { if (S.best[k]) rec = 'New record'; S.best[k] = R.score; }
       else rec = 'Best: ' + S.best[k];
     }
     save();
     show('results');
-    $('resTitle').textContent = R.daily ? 'Daily 5 · ' + today() : R.n + '-question round';
+    $('resTitle').textContent = R.daily ? 'Daily 5 · ' + today() : R.n + '-question round · ' + DIFF[R.diff].name;
     let sh = '';
     for (let i = 0; i < 5; i++) sh += starSvg(Math.max(0, Math.min(1, st - i)), i);
     $('stars').innerHTML = sh;
@@ -190,17 +221,19 @@
     // count up
     const tgt = R.score, t0 = performance.now();
     (function up() { const f = Math.min(1, (performance.now() - t0) / 900); $('resTotal').textContent = Math.round(tgt * (1 - Math.pow(1 - f, 3))); if (f < 1) requestAnimationFrame(up); })();
-    $('reslist').innerHTML = R.res.map((r) => `<div class="ri k${r.tier}"><div class="rq">${esc(r.q)}</div><div><div class="ra">${r.ans ? esc(r.ans) : r.why === 'time' ? 'Time’s up' : 'Skipped'}</div><div class="rt">${r.tier ? T[r.tier].name : 'NO SCORE'}${r.tier !== 6 && r.legend ? ' · Deep Cut: ' + esc(nice(r.legend)) : ''}</div></div><div class="rp">${r.total}</div></div>`).join('');
+    $('reslist').innerHTML = R.res.map((r) => `<div class="ri k${r.tier}"><div class="rq">${esc(r.q)}</div><div><div class="ra">${r.ans ? esc(r.ans) : r.why === 'time' ? 'Time’s up' : r.why === 'strikes' ? 'Struck out' : 'Skipped'}</div><div class="rt">${r.tier ? T[r.tier].name : 'NO SCORE'}${r.tier !== 6 && r.legend ? ' · Deep Cut: ' + esc(nice(r.legend)) : ''}</div></div><div class="rp">${r.total}</div></div>`).join('');
   }
 
   function vault() {
     const tot = PROMPTS.length, seen = Object.keys(S.seen).length;
     const deep = S.tiers[4] + S.tiers[5] + S.tiers[6];
     const avgSt = S.rounds ? (S.starSum / S.rounds).toFixed(1) : '-';
-    const best = (n) => Math.max(S.best[n] || 0, S.best[n + ':nature'] || 0, S.best[n + ':world'] || 0, S.best[n + ':pop'] || 0) || '-';
+    const best = (n) => Math.max(0, ...Object.entries(S.best).filter(([k]) => new RegExp('^' + n + '(?![0-9])').test(k)).map(([, v]) => v)) || '-';
+    const bestD = (d) => Math.max(0, ...Object.entries(S.best).filter(([k]) => d === 'normal' ? !k.includes('@') : k.endsWith('@' + d)).map(([, v]) => v)) || '-';
     $('stats').innerHTML = [
       [S.rounds, 'Rounds played'], [avgSt, 'Avg stars'], [S.cuts.length, 'Deep cuts found'], [S.answered ? Math.round((deep / S.answered) * 100) + '%' : '-', 'Obscure or deeper'],
       [best(3), 'Best 3-round'], [best(5), 'Best 5-round'], [best(7), 'Best 7-round'], [best(10), 'Best 10-round'],
+      [bestD('easy'), 'Best on Easy'], [bestD('normal'), 'Best on Normal'], [bestD('hard'), 'Best on Hard'], [bestD('expert'), 'Best on Expert'],
       [seen.toLocaleString() + ' / ' + tot.toLocaleString(), 'Questions seen'], [S.daily[today()] ? S.daily[today()].score : '-', 'Daily 5 today'],
     ].map(([v, l]) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`).join('');
     $('cuts').innerHTML = S.cuts.length ? S.cuts.map((c) => `<div class="cut"><b>${esc(c.name)}</b><span>${esc(c.q)}<br>${c.d}</span></div>`).join('') : '<div class="empty">None yet. Every question hides one. Go deep.</div>';
@@ -215,8 +248,27 @@
   }
 
   // ---------- wiring ----------
-  $('lens').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; lenSel = +b.dataset.n; $('lens').querySelectorAll('button').forEach((x) => x.classList.toggle('sel', x === b)); };
-  $('themes').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; themeSel = b.dataset.t; $('themes').querySelectorAll('button').forEach((x) => x.classList.toggle('sel', x === b)); };
+  function setDiff(v) {
+    diffSel = v; S.diffSel = v; save();
+    $('diffs').querySelectorAll('button').forEach((x) => x.classList.toggle('sel', x.dataset.d === v));
+    $('diffDesc').textContent = DIFF[v].desc;
+  }
+  $('diffs').onclick = (e) => { const b = e.target.closest('button'); if (b) setDiff(b.dataset.d); };
+  setDiff(diffSel);
+  $('lens').querySelectorAll('button').forEach((x) => x.classList.toggle('sel', +x.dataset.n === lenSel));
+  $('themes').querySelectorAll('button').forEach((x) => x.classList.toggle('sel', x.dataset.t === themeSel));
+  $('hintBtn').onclick = () => {
+    if (!R || R.cur.done) return;
+    const p = R.cur.p, pool = p.pool ? [...p.pool] : p.cat.answers;
+    const opts = pool.filter((x) => x.tier === 3).concat(pool.filter((x) => x.tier === 4));
+    const h = opts.length ? opts[Math.floor(Math.random() * Math.min(opts.length, 12))] : pool[0];
+    const w = DC.dname(h, p).toUpperCase();
+    $('msg').className = 'msg hint';
+    $('msg').textContent = 'Try: ' + w.replace(/[A-Z0-9]/g, (ch, i) => (i === 0 || w[i - 1] === ' ' ? ch : '_')).split('').join(' ');
+    $('hintBtn').disabled = true; $('ans').focus();
+  };
+  $('lens').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; lenSel = +b.dataset.n; S.lenSel = lenSel; save(); $('lens').querySelectorAll('button').forEach((x) => x.classList.toggle('sel', x === b)); };
+  $('themes').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; themeSel = b.dataset.t; S.themeSel = themeSel; save(); $('themes').querySelectorAll('button').forEach((x) => x.classList.toggle('sel', x === b)); };
   $('playBtn').onclick = () => start(lenSel, false);
   $('dailyBtn').onclick = () => start(5, true);
   $('vaultBtn').onclick = vault;

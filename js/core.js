@@ -153,16 +153,17 @@
     { name: 'DEEP CUT', pts: 500, cls: 'tb6', note: 'The rarest answer on the board' },
   ];
   const TIME = 25;
-  function score(tier, secsLeft) {
-    const base = TIER_INFO[tier].pts;
-    const speed = Math.round(base * 0.2 * Math.max(0, Math.min(1, secsLeft / TIME)));
+  function score(tier, secsLeft, time = TIME, mult = 1) {
+    const base = Math.round(TIER_INFO[tier].pts * mult);
+    const speed = Math.round(base * 0.2 * Math.max(0, Math.min(1, secsLeft / time)));
     return { base, speed, total: base + speed };
   }
   // stars out of 5 (half steps) from average base points per question
   const STAR_AT = [0, 12, 35, 70, 120, 185];
-  function stars(results) {
+  // k scales the bar: easy < 1, hard/expert > 1. r.raw = tier points before any multiplier
+  function stars(results, k = 1) {
     if (!results.length) return 0;
-    const avg = results.reduce((s, r) => s + (r.base || 0), 0) / results.length;
+    const avg = results.reduce((s, r) => s + (r.raw != null ? r.raw : r.base || 0), 0) / results.length / k;
     let st = 0;
     for (let i = 1; i <= 5; i++) {
       if (avg >= STAR_AT[i]) st = i;
